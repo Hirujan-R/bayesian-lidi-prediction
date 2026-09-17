@@ -58,48 +58,59 @@ def fit_polr(X, y0, seed=42):
     with pm.Model() as m:
         s = pm.HalfNormal("sigma", 1.0)
         w = pm.Normal("w", 0, s, shape=X.shape[1])
-        c = pm.Normal("cutpoints", 0, 20, shape=2,
-                      transform=pm.distributions.transforms.ordered, initval=np.array([-0.5, 0.5]))
-        pm.Potential("y_obs", ordered_logistic_logp(pt.dot(X, w), c[0], c[1], y0).sum())
+        c1 = pm.Normal("c1", 0, 20)
+        log_diff_c = pm.Normal("log_diff_c", 0, 2)
+        c2 = c1 + pt.exp(log_diff_c)
+        pm.Potential("y_obs", ordered_logistic_logp(pt.dot(X, w), c1, c2, y0).sum())
         return pm.sample(2000, tune=1000, chains=4, target_accept=0.9, random_seed=seed,
                          progressbar=True, init="adapt_diag",
-                         initvals={"w": np.zeros(X.shape[1]), "cutpoints": np.array([-0.5, 0.5])})
+                         initvals={"w": np.zeros(X.shape[1]), "c1": np.float64(0.0),
+                                   "log_diff_c": np.float64(0.0)})
 
 
 def fit_bnn(X, y0, hidden=HIDDEN, seed=42):
     with pm.Model() as m:
         s = pm.HalfNormal("sigma", 1.0)
         w01 = pm.Normal("w01", 0, s, shape=(X.shape[1], hidden))
+        b01 = pm.Normal("b01", 0, s, shape=hidden)
         w12 = pm.Normal("w12", 0, s, shape=hidden)
-        c = pm.Normal("cutpoints", 0, 20, shape=2,
-                      transform=pm.distributions.transforms.ordered, initval=np.array([-0.5, 0.5]))
-        eta = pt.dot(pt.maximum(0.0, pt.dot(X, w01)), w12)
-        pm.Potential("y_obs", ordered_logistic_logp(eta, c[0], c[1], y0).sum())
+        c1 = pm.Normal("c1", 0, 20)
+        log_diff_c = pm.Normal("log_diff_c", 0, 2)
+        c2 = c1 + pt.exp(log_diff_c)
+        eta = pt.dot(pt.maximum(0.0, pt.dot(X, w01) + b01), w12)
+        pm.Potential("y_obs", ordered_logistic_logp(eta, c1, c2, y0).sum())
         return pm.sample(2000, tune=1000, chains=4, target_accept=0.9, random_seed=seed,
                          progressbar=True, init="adapt_diag",
-                         initvals={"w01": np.zeros((X.shape[1], hidden)), "w12": np.zeros(hidden),
-                                   "cutpoints": np.array([-0.5, 0.5])})
+                         initvals={"w01": np.zeros((X.shape[1], hidden)), "b01": np.zeros(hidden),
+                                   "w12": np.zeros(hidden), "c1": np.float64(0.0),
+                                   "log_diff_c": np.float64(0.0)})
 
 
 polr = fit_polr(P_tr, ytr - 1)
 bnn = fit_bnn(B_tr, ytr - 1)
 
 
+def cutpoints(t):
+    c1 = t.posterior["c1"].values.reshape(-1)
+    return c1, c1 + np.exp(t.posterior["log_diff_c"].values.reshape(-1))
+
+
 def pred_polr(t, X):
     w = t.posterior["w"].values.reshape(-1, X.shape[1])
-    c = t.posterior["cutpoints"].values.reshape(-1, 2)
+    c1, c2 = cutpoints(t)
     eta = X @ w.T
-    p1 = expit(c[:, 0][None, :] - eta)
-    return p1, expit(c[:, 1][None, :] - eta) - p1, 1 - expit(c[:, 1][None, :] - eta), eta
+    p1 = expit(c1[None, :] - eta)
+    return p1, expit(c2[None, :] - eta) - p1, 1 - expit(c2[None, :] - eta), eta
 
 
 def pred_bnn(t, X):
     w01 = t.posterior["w01"].values.reshape(-1, X.shape[1], HIDDEN)
+    b01 = t.posterior["b01"].values.reshape(-1, HIDDEN)
     w12 = t.posterior["w12"].values.reshape(-1, HIDDEN)
-    eta = np.einsum("nsh,sh->ns", np.maximum(0.0, np.einsum("ni,sih->nsh", X, w01)), w12)
-    c = t.posterior["cutpoints"].values.reshape(-1, 2)
-    p1 = expit(c[:, 0][None, :] - eta)
-    return p1, expit(c[:, 1][None, :] - eta) - p1, 1 - expit(c[:, 1][None, :] - eta), eta
+    eta = np.einsum("nsh,sh->ns", np.maximum(0.0, np.einsum("ni,sih->nsh", X, w01) + b01[None, :, :]), w12)
+    c1, c2 = cutpoints(t)
+    p1 = expit(c1[None, :] - eta)
+    return p1, expit(c2[None, :] - eta) - p1, 1 - expit(c2[None, :] - eta), eta
 
 
 def obs(y, p1, p2, p3):
@@ -122,10 +133,10 @@ MODELS = [("POLR", polr, pred_polr, P_tr, P_te), ("BNN", bnn, pred_bnn, B_tr, B_
 
 # MCMC diagnostics
 for tag, t in [("polr", polr), ("bnn", bnn)]:
-    az.plot_trace(t, var_names=["sigma", "cutpoints"]).savefig(
+    az.plot_trace(t, var_names=["sigma", "c1", "log_diff_c"]).savefig(
         f"{FIG}/{tag}_trace.png", dpi=130, bbox_inches="tight")
     plt.close("all")
-    az.plot_rank(t, var_names=["sigma", "cutpoints"]).savefig(
+    az.plot_rank(t, var_names=["sigma", "c1", "log_diff_c"]).savefig(
         f"{FIG}/{tag}_rank.png", dpi=130, bbox_inches="tight")
     plt.close("all")
 
@@ -214,9 +225,9 @@ for ax, (name, t, fn, _, Xte) in zip(axes, MODELS):
     lo, hi = np.quantile(eta, [0.025, 0.975], axis=1)
     ax.errorbar(yte + rng.uniform(-0.12, 0.12, len(yte)), mean,
                 yerr=[mean - lo, hi - mean], fmt="o", ms=4, alpha=0.6)
-    cc = t.posterior["cutpoints"].values.reshape(-1, 2).mean(0)
-    ax.axhline(cc[0], color="k", ls="--", lw=1)
-    ax.axhline(cc[1], color="k", ls="--", lw=1)
+    c1, c2 = cutpoints(t)
+    ax.axhline(c1.mean(), color="k", ls="--", lw=1)
+    ax.axhline(c2.mean(), color="k", ls="--", lw=1)
     ax.set_title(f"{name} — latent predictor vs true class (test)")
     ax.set_xlabel("true class")
     ax.set_xticks([1, 2, 3])
