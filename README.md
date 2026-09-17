@@ -153,15 +153,33 @@ Saved outputs: `data/08_reporting/polr_full_metrics.csv`,
 
 ---
 
-## Extension: chemical representations (SMILES / RDKit)
+## Research question extension: do chemical representations help?
 
-`scripts/structure_extension.py` tests the paper's suggested future work — *"including
-chemical representation of molecules into the model"* — with regularisation for the
-high-dimensional structure block. SMILES for the 184 compounds are resolved from
-PubChem and encoded as RDKit **MACCS keys** (167 bits). Fixed dataset and split;
-20-bootstrap SDs on the test set.
+### Research question
 
-### Ablation (frequentist, test set)
+The paper models DILI severity from in-vitro assays only and suggests as future work
+*"including chemical representation of molecules into the model"*. We test:
+
+> Does molecular structure (SMILES-derived features) improve ordinal DILI-severity
+> prediction beyond the in-vitro assay panel, and can the paper's Bayesian models
+> exploit it?
+
+### Hypotheses
+
+- **H1 — signal:** structure-only beats the frequency baseline.
+- **H2 — complementarity:** combined (assay + structure) beats assay-only out-of-sample.
+- **H3 — regularisation:** the Bayesian models benefit from structure only with a
+  shrinkage prior on the structure block.
+
+### Design
+
+Same 184 compounds, same 147/37 split, same 3-class target. SMILES are resolved from
+PubChem and encoded as RDKit **MACCS keys** (167 bits). A frequentist ablation compares
+the three feature blocks; Bayesian POLR/BNN are then fitted on the combined block
+(structure compressed to 15 PCA components) under a weak vs a **horseshoe** prior on the
+structure inputs. Run by `scripts/structure_extension.py`; 20-bootstrap SDs on the test set.
+
+### Results — frequentist ablation (test set)
 
 | Block | Model | OBS | BSS | BA | Acc |
 |---|---|---|---|---|---|
@@ -173,7 +191,7 @@ PubChem and encoded as RDKit **MACCS keys** (167 bits). Fixed dataset and split;
 | combined | logreg (L2) | 0.152 | 0.314 | 0.633 | 0.622 |
 | **combined** | **random forest** | **0.160** | **0.278** | **0.695** | **0.703** |
 
-### Bayesian models (combined = 8 assay + 15 structure PCs)
+### Results — Bayesian models (combined = 8 assay + 15 structure PCs)
 
 Assay-only references (code-faithful): POLR WAIC 268.4, BNN WAIC 252.6.
 
@@ -186,17 +204,25 @@ Assay-only references (code-faithful): POLR WAIC 268.4, BNN WAIC 252.6.
 | BNN combined | weak | 264.3 | 0.155 | 0.299 | 0.456 |
 | **BNN combined** | **horseshoe** | 254.3 | **0.145** | **0.344** | **0.605** |
 
-### Findings
+### Conclusion
 
-- **Structure carries signal** — structure-only models reach BA 0.69 / BSS 0.26, far
-  above the frequency baseline (0.33 / 0.00).
-- **Structure is complementary** — combined assay + structure is the best frequentist
-  model (RF: BA 0.695, BSS 0.278 ± 0.043).
-- **Regularisation is decisive for the Bayesian models.** The weak-prior combined BNN
-  collapses (BA 0.456), but the horseshoe prior restores it to BA 0.605 with the best
-  out-of-sample OBS (0.145) and BSS (0.344) of any Bayesian model — improving on the
-  assay-only BNN (OBS 0.160, BSS 0.279, BA 0.585).
-- **Caveat:** the test set is 37 compounds; judge differences against the bootstrap SDs.
+- **H1 supported** — structure-only models reach BA 0.69 / BSS 0.26, far above the
+  frequency baseline (0.33 / 0.00).
+- **H2 supported** — combined beats assay-only across model families (e.g. logreg
+  BSS 0.273 → 0.314), so structure is complementary rather than redundant.
+- **H3 supported, and decisive** — with the paper's weak prior, adding structure to the
+  BNN *hurts* (BA 0.585 → 0.456); with the horseshoe prior it helps, giving the best
+  out-of-sample result of any Bayesian model (OBS 0.145, BSS 0.344, BA 0.605 vs
+  assay-only 0.160 / 0.279 / 0.585).
+- **The Bayesian approach does not win overall** — the best frequentist combined model
+  (random forest) reaches BA 0.695, above the best Bayesian combined model (0.605).
+  On this dataset structure benefits the simpler models more.
+- **Caveats** — 37 test compounds, structure PCA-compressed for the Bayesian models, and
+  large bootstrap SDs (BSS ±0.04-0.16); treat the ranking as directional.
+
+**Bottom line:** chemical structure adds real, complementary information; the Bayesian
+models can use it only with shrinkage priors, and even then do not outperform regularised
+frequentist ensembles at this sample size.
 
 Output: `data/08_reporting/structure_extension_results.csv`,
 `data/08_reporting/original_compounds_smiles.csv`.
