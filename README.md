@@ -14,7 +14,7 @@ The work reproduces the models from:
 
 > Semenova, Williams, Afzal & Lazic (2020), *A Bayesian neural network for toxicity
 > prediction*, Computational Toxicology 16:100133
-> (`original_research.pdf`, [bioRxiv 2020.04.28.065532](https://doi.org/10.1101/2020.04.28.065532)).
+> ([bioRxiv 2020.04.28.065532](https://doi.org/10.1101/2020.04.28.065532)).
 
 The paper's **baseline** is a Bayesian proportional-odds logistic regression (POLR);
 its **proposed** model is a Bayesian neural network (BNN). Both are reimplemented here
