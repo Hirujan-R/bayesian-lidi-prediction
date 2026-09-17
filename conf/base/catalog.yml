@@ -1,0 +1,7 @@
+train_df:
+  type: pandas.ParquetDataset
+  filepath: "data/01_raw/train_df.parquet"
+
+test_df:
+  type: pandas.ParquetDataset
+  filepath: "data/01_raw/test_df.parquet"

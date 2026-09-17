@@ -1,0 +1,36 @@
+[project]
+name = "bayesian-lidi-prediction"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Hirujan Rangaraj", email = "hirujanrangaraj@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "arviz>=1.3.0",
+    "kedro>=1.5.0",
+    "kedro-datasets>=9.6.0",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "pyarrow>=25.0.1",
+    "pymc>=6.3.0",
+    "pytensor>=3.2.4",
+    "starter>=0.4.2",
+]
+
+[project.scripts]
+bayesian-lidi-prediction = "bayesian_lidi_prediction:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.kedro]
+package_name = "bayesian_lidi_prediction"
+project_name = "bayesian-lidi-prediction"
+kedro_init_version = "1.5.0"  # Replace with your actual Kedro package version if different
+
+[tool.kedro_telemetry]
+project_id = "51d6ae7fbdf3414aa5affeaad94ae954"
